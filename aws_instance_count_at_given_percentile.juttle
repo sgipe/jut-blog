@@ -1,0 +1,32 @@
+input period: duration -label 'Since' -default :30 days:;
+
+input input_instancetype: combobox 
+  -label 'Instance Type' 
+  -default 'm3.medium' 
+  -juttle "read -source_type 'metric' -space 'aws' -from :1d ago: -to:now: | reduce by instance_type | sort instance_type | filter instance_type != null"
+  -valueField 'instance_type';
+
+input input_regionaz: combobox 
+  -label 'region_az' 
+  -default 'us-west-2c' 
+  -juttle "read -source_type 'metric' -space 'aws' -from :1d ago: -to:now: | reduce by region_az | sort region_az | filter region_az != null"
+  -valueField 'region_az';  
+  
+input perc: number -label 'Percentile' -default 30;
+const start_time = :now: - 2 * period;
+
+read -source_type 'metric' -space "aws" -from start_time -to :now: instance_type = input_instancetype  region_az=input_regionaz | 
+(
+  reduce threshold_count_all_time = percentile('value', perc / 100) by instance_type | @table;
+  reduce -every :1h: value=max(value) 
+  |(
+    put name = 'Hourly Max Raw Count';
+    reduce -over period -every :hour: value = percentile('value', perc / 100) | put name = 'Count at Percentile ${perc}';
+  ) 
+  | @timechart -valueField 'value' -keyField 'name'
+      -title 'Instance Count: Raw and "Percentile ${perc}" --- ${(Math.floor(Duration.as(period, "d")))} Day Rolling Period --- ${input_instancetype} ${input_regionaz}'
+      -display.duration period 
+      -display.dataDensity 0 
+)
+
+

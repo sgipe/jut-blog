@@ -1,0 +1,55 @@
+input period: duration 
+  -label 'History' 
+  -default :90m:;
+
+input alert_perc: number 
+  -label 'Alerting Threshold as Percentile' 
+  -default 90;
+  
+const start_time = :now: - period;
+
+(
+  read -space "aws" -from start_time  AttributeName='max-instances'
+  | reduce -over :30m: -every :5m: value=max(value) 
+  | (
+    put value = ( value * alert_perc / 100 ) | put name = 'instance_count_alert_threshold' | put instance_count_alert_threshold = value ;
+    put name = 'instance_count_limit' | put instance_count_limit = value ;
+  );
+  
+  read -source_type 'metric' -space "aws" -from start_time instance_type~'*'  
+  | put instance_count=value 
+  | reduce -every :5m: value=sum(instance_count) | put name = 'summed_instance_count ' | put summed_instance_count = value
+  ;
+)
+| (
+  // @table ;
+  @timechart -valueField 'value' -keyField 'name' 
+    -title 'Instance Count vs Instance Count Limit'
+    -display.duration period 
+    // -display.dataDensity 0 
+    ;
+    
+  remove value | join -zip :4m: 
+  | put instances_over_threshold = ( summed_instance_count - instance_count_alert_threshold ) 
+  | filter instances_over_threshold > 0
+  | (
+    // @table ;
+    put alert_message = String.concat("ec2 limit warning. summed_instance_count: ", Number.toString(summed_instance_count), " instance_count_alert_threshold: ", Number.toString(instance_count_alert_threshold), " instance_count_limit: ", Number.toString(instance_count_limit)) 
+    | (
+      head 
+      | put event_type = "trigger" 
+      //| @table 
+      | alert
+          -target "slack"
+          -token "REDACTED"
+          -message "ec2 instance limit high"
+          -messageField 'alert_message'
+          -title "put ec2_instance_limit_alert"
+          -incident_key "docs_github"
+          -url "https://hooks.slack.com/services/REDACTED/REDACTED/REDACTED"
+          -channel "#REDACTED"
+          -username "juttle_alert"
+          ;
+      )
+    )
+)
