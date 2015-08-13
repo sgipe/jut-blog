@@ -11,7 +11,7 @@ JQ='/Users/sam/local/bin/jq-osx-x86_64'
 ## requires oniguruma-dev (deb) or oniguruma-devel (rh) for regex matching. Install with apt/yum/brew
 
 JUT_SERVER=<IP.IP.IP.IP>
-HTTP_PORT=<http-recvr-portum>
+HTTP_PORT=<http-recvr-portnum>
 
 HTTP_RCVR_URL="http://${JUT_SERVER}:${HTTP_PORT}/?type=metric"
 
